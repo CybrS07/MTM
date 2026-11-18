@@ -56,11 +56,12 @@ jobs:
 
       # sql/schema.sql is the single source of truth. The CLI only reads supabase/migrations, so copy it in here.
       # The file is idempotent (create if not exists, drop policy if exists), so re-running it is safe.
+      # --remote is required: without it the CLI targets a local Docker database, which does not exist on the runner.
       - name: Apply SQL (remote database)
         run: |
           mkdir -p supabase/migrations
           cp sql/schema.sql supabase/migrations/20260101000000_schema.sql
-          supabase db push --yes
+          supabase db push --remote --yes
 
       # Push only the secrets that are set, so a missing one never overwrites a good value on Supabase with an empty string.
       - name: Set Edge Function secrets

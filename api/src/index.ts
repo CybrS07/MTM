@@ -10,6 +10,7 @@ import { loadTls } from "./ssl.js";
 import { loadState, readText, writeText } from "./store.js";
 import { runFull, runUpdate } from "./pipeline.js";
 import { HttpError, bodyText, csvSafe } from "./sanitize.js";
+import { requireOrganizer, requireUser } from "./auth.js";
 
 const HTTPS_PORT = Number(process.env.HTTPS_PORT || 8443);
 const HTTP_PORT = Number(process.env.HTTP_PORT || 8080);
@@ -48,11 +49,11 @@ const job = (fn: (req: express.Request, res: express.Response) => Promise<void>)
   } finally { busy = false; }
 };
 
-app.get("/api/state", (_q, r) => r.json(loadState()));
-app.get("/api/sample", (_q, r) => r.json({ text: readText(PATHS.pack) }));
-app.get("/api/export", (_q, r) => { r.setHeader("Content-Disposition", "attachment; filename=plan-and-trace.json"); r.json(loadState()); });
+app.get("/api/state", requireUser, (_q, r) => r.json(loadState()));
+app.get("/api/sample", requireUser, (_q, r) => r.json({ text: readText(PATHS.pack) }));
+app.get("/api/export", requireUser, (_q, r) => { r.setHeader("Content-Disposition", "attachment; filename=plan-and-trace.json"); r.json(loadState()); });
 
-app.get("/api/export.csv", (_q, res) => {
+app.get("/api/export.csv", requireUser, (_q, res) => {
   const st = loadState();
   const rows = [["run", "call", "model", "area", "input_tokens", "output_tokens", "total_tokens", "ms"],
     ...(st?.runs ?? []).flatMap((r) => r.calls.map((c) => [r.id, c.n, c.model, c.area, c.prompt_tokens, c.output_tokens, c.total_tokens, c.ms]))];
@@ -60,11 +61,11 @@ app.get("/api/export.csv", (_q, res) => {
   res.send(rows.map((r) => r.map((v) => `"${csvSafe(v).replace(/"/g, '""')}"`).join(",")).join("\n"));
 });
 
-app.post("/api/run", heavy, job(async (req, res) => {
+app.post("/api/run", heavy, requireOrganizer, job(async (req, res) => {
   if (req.body?.text !== undefined) writeText(PATHS.pack, bodyText(req.body.text));
   res.json(await runFull());
 }));
-app.post("/api/update", heavy, job(async (req, res) => {
+app.post("/api/update", heavy, requireOrganizer, job(async (req, res) => {
   writeText(PATHS.update, bodyText(req.body?.text, 5000));
   res.json(await runUpdate());
 }));

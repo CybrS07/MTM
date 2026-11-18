@@ -1,47 +1,73 @@
 import { useEffect, useState } from "react";
-import { Activity, Ban, Bot, Download, FileText, Loader2, Moon, Play, Send, ShieldAlert, Sun } from "lucide-react";
+import type { Session } from "@supabase/supabase-js";
+import { Activity, Ban, Bot, CalendarClock, Download, FileText, LayoutDashboard, Loader2, LogOut, Moon, Play, ReceiptText, RefreshCw, ShieldAlert, Sun } from "lucide-react";
 import type { State } from "../shared/types";
-import { API_BASE, getSample, getState, runPlan, sendUpdate } from "./api";
+import { downloadCsv, getSample, getState, runPlan, sendUpdate } from "./api";
+import { supabase } from "./lib/supabase";
 import { applyTheme, initialMode, type Mode } from "./theme";
+import Login from "./components/Login";
+import Dashboard from "./components/Dashboard";
 import PlanView from "./components/PlanView";
 import TraceView from "./components/TraceView";
 import RejectedView from "./components/RejectedView";
+import Receipts from "./components/Receipts";
+import Assistant from "./components/Assistant";
+import "./layout.css";
 
-type Tab = "plan" | "trace" | "rejected";
+type Screen = "dashboard" | "input" | "plan" | "trace" | "rejected" | "update" | "receipts" | "assistant";
+const NAV: { id: Screen; label: string; icon: typeof Bot; organizer?: boolean }[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "input", label: "Message input", icon: FileText },
+  { id: "plan", label: "Event plan", icon: CalendarClock },
+  { id: "trace", label: "AI agent trace", icon: Activity },
+  { id: "rejected", label: "Conflicts and rejected", icon: Ban },
+  { id: "update", label: "Update plan", icon: RefreshCw },
+  { id: "receipts", label: "Receipts", icon: ReceiptText },
+  { id: "assistant", label: "AI assistant", icon: Bot, organizer: true },
+];
 
 export default function App() {
   const [mode, setMode] = useState<Mode>(initialMode);
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [organizer, setOrganizer] = useState(false);
   const [st, setSt] = useState<State | null>(null);
   const [pack, setPack] = useState("");
   const [msg, setMsg] = useState("");
+  const [screen, setScreen] = useState<Screen>("dashboard");
   const [busy, setBusy] = useState<"run" | "update" | null>(null);
   const [err, setErr] = useState("");
-  const [tab, setTab] = useState<Tab>("plan");
 
   useEffect(() => applyTheme(mode), [mode]);
   useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  const uid = session?.user.id;
+  useEffect(() => {
+    if (!uid) { setOrganizer(false); setSt(null); return; }
+    supabase.from("profiles").select("role").eq("id", uid).maybeSingle().then(({ data }) => setOrganizer(data?.role === "organizer"));
     getState().then(setSt).catch(() => {});
     getSample().then((s) => setPack(s.text)).catch(() => {});
-  }, []);
+  }, [uid]);
+
+  if (session === undefined) return <p className="empty">Loading…</p>;
+  if (!session) return <Login />;
 
   const go = async (kind: "run" | "update") => {
     setBusy(kind); setErr("");
     try {
       const next = kind === "run" ? await runPlan(pack) : await sendUpdate(msg);
       setSt(next);
-      if (kind === "update") {
-        setMsg("");
-        setTab(next.runs[next.runs.length - 1].outcome === "applied" ? "plan" : "rejected");
-      } else setTab("plan");
+      if (kind === "run") setScreen("plan");
+      else { setMsg(""); setScreen(next.runs[next.runs.length - 1].outcome === "applied" ? "plan" : "rejected"); }
     } catch (e) { setErr((e as Error).message); }
     finally { setBusy(null); }
   };
 
-  const download = () => {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(st, null, 2)], { type: "application/json" }));
-    a.download = "plan-and-trace.json"; a.click();
-  };
+  const none = <p className="empty">No plan yet. Open Message input and plan the event.</p>;
+  const lock = !organizer && <p className="muted">Only organizers can run or update the plan.</p>;
 
   return (
     <>
@@ -50,54 +76,62 @@ export default function App() {
           <span className="logo"><Bot size={22} /></span>
           <div><h1>Mind to Machine planner</h1><small>150 students · 50 teams · Islamabad</small></div>
         </div>
-        <button className="btn icon-btn" aria-label={`Switch to ${mode === "dark" ? "light" : "dark"} mode`} onClick={() => setMode(mode === "dark" ? "light" : "dark")}>
-          {mode === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
+        <div className="who">
+          <span>{session.user.email} · {organizer ? "organizer" : "student"}</span>
+          <button className="btn icon-btn" aria-label="Switch theme" onClick={() => setMode(mode === "dark" ? "light" : "dark")}>{mode === "dark" ? <Sun size={18} /> : <Moon size={18} />}</button>
+          <button className="btn icon-btn" aria-label="Sign out" onClick={() => supabase.auth.signOut()}><LogOut size={18} /></button>
+        </div>
       </header>
 
-      <main className="layout">
-        <aside>
-          <section className="panel">
-            <h2><FileText size={18} /> Message pack</h2>
-            <textarea value={pack} onChange={(e) => setPack(e.target.value)} aria-label="Message pack" />
-            <div className="row">
-              <button className="btn primary" disabled={!!busy || !pack.trim()} onClick={() => go("run")}>
-                {busy === "run" ? <Loader2 size={16} className="spin" /> : <Play size={16} />} Plan the event
-              </button>
-            </div>
-          </section>
-          <section className="panel">
-            <h2><Send size={18} /> New message</h2>
-            <textarea style={{ minHeight: "5rem" }} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Paste a message that arrived after the first run" aria-label="New message" />
-            <div className="row">
-              <button className="btn primary" disabled={!!busy || !msg.trim() || !st} onClick={() => go("update")}>
-                {busy === "update" ? <Loader2 size={16} className="spin" /> : <Send size={16} />} Update the plan
-              </button>
-            </div>
-            {!st && <p className="muted">Plan the event first, then send updates.</p>}
-          </section>
-          {err && <div className="error" role="alert"><ShieldAlert size={18} /> {err}</div>}
-        </aside>
+      <div className="shell">
+        <nav className="nav" aria-label="Screens">
+          {NAV.filter((n) => !n.organizer || organizer).map(({ id, label, icon: Icon }) => (
+            <button key={id} aria-current={screen === id ? "page" : undefined} onClick={() => setScreen(id)}><Icon size={18} /> {label}</button>
+          ))}
+        </nav>
 
-        <section>
-          {!st ? (
-            <p className="empty">No plan yet. Load the pack on the left and choose Plan the event.</p>
-          ) : (
-            <>
-              <div className="tabs" role="tablist">
-                <button className="tab" role="tab" aria-selected={tab === "plan"} onClick={() => setTab("plan")}><FileText size={16} /> Plan</button>
-                <button className="tab" role="tab" aria-selected={tab === "trace"} onClick={() => setTab("trace")}><Activity size={16} /> Trace</button>
-                <button className="tab" role="tab" aria-selected={tab === "rejected"} onClick={() => setTab("rejected")}><Ban size={16} /> Rejected <span className="count">{st.rejected.length}</span></button>
-                <button className="btn" style={{ marginLeft: "auto" }} onClick={download}><Download size={16} /> Save plan and trace</button>
-                <a className="btn" href={`${API_BASE}/api/export.csv`} download><Download size={16} /> Trace table (CSV)</a>
+        <main>
+          {err && <div className="error" role="alert"><ShieldAlert size={18} /> {err}</div>}
+          {screen === "dashboard" && <Dashboard st={st} organizer={organizer} />}
+          {screen === "input" && (
+            <section className="panel">
+              <h2><FileText size={18} /> Message pack</h2>
+              <textarea style={{ minHeight: "16rem" }} value={pack} onChange={(e) => setPack(e.target.value)} aria-label="Message pack" />
+              <div className="row">
+                <button className="btn primary" disabled={!!busy || !pack.trim() || !organizer} onClick={() => go("run")}>
+                  {busy === "run" ? <Loader2 size={16} className="spin" /> : <Play size={16} />} Plan the event
+                </button>
               </div>
-              {tab === "plan" && <PlanView st={st} />}
-              {tab === "trace" && <TraceView st={st} />}
-              {tab === "rejected" && <RejectedView st={st} />}
-            </>
+              {lock}
+            </section>
           )}
-        </section>
-      </main>
+          {screen === "plan" && (st ? <PlanView st={st} /> : none)}
+          {screen === "trace" && (st ? (
+            <>
+              <div className="row" style={{ marginBottom: ".8rem" }}>
+                <button className="btn" onClick={() => downloadCsv().catch((e) => setErr(e.message))}><Download size={16} /> Trace table (CSV)</button>
+                <button className="btn" onClick={() => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(st, null, 2)], { type: "application/json" })); a.download = "plan-and-trace.json"; a.click(); }}><Download size={16} /> Save plan and trace</button>
+              </div>
+              <TraceView st={st} />
+            </>
+          ) : none)}
+          {screen === "rejected" && (st ? <RejectedView st={st} /> : none)}
+          {screen === "update" && (
+            <section className="panel">
+              <h2><RefreshCw size={18} /> New message</h2>
+              <textarea style={{ minHeight: "6rem" }} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Paste a message that arrived after the first run" aria-label="New message" />
+              <div className="row">
+                <button className="btn primary" disabled={!!busy || !msg.trim() || !st || !organizer} onClick={() => go("update")}>
+                  {busy === "update" ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Update the plan
+                </button>
+              </div>
+              {lock}
+            </section>
+          )}
+          {screen === "receipts" && <Receipts userId={session.user.id} organizer={organizer} />}
+          {screen === "assistant" && organizer && <Assistant />}
+        </main>
+      </div>
     </>
   );
 }

@@ -89,6 +89,7 @@ export default function App() {
                 <button className="tab" role="tab" aria-selected={tab === "trace"} onClick={() => setTab("trace")}><Activity size={16} /> Trace</button>
                 <button className="tab" role="tab" aria-selected={tab === "rejected"} onClick={() => setTab("rejected")}><Ban size={16} /> Rejected <span className="count">{st.rejected.length}</span></button>
                 <button className="btn" style={{ marginLeft: "auto" }} onClick={download}><Download size={16} /> Save plan and trace</button>
+                <a className="btn" href="/api/export.csv" download><Download size={16} /> Trace table (CSV)</a>
               </div>
               {tab === "plan" && <PlanView st={st} />}
               {tab === "trace" && <TraceView st={st} />}

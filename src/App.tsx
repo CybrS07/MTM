@@ -3,6 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import { Activity, Ban, Bot, CalendarClock, Download, FileText, LayoutDashboard, Loader2, LogOut, Moon, Play, ReceiptText, RefreshCw, ShieldAlert, Sun } from "lucide-react";
 import type { State } from "../shared/types";
 import { downloadCsv, getSample, getState, runPlan, sendUpdate } from "./api";
+import { loadToken, saveToken } from "./planner/store";
 import { SUPABASE_ON, supabase } from "./lib/supabase";
 import { applyTheme, initialMode, type Mode } from "./theme";
 import Login from "./components/Login";
@@ -38,6 +39,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [busy, setBusy] = useState<"run" | "update" | null>(null);
   const [err, setErr] = useState("");
+  const [token, setToken] = useState(loadToken);
 
   useEffect(() => applyTheme(mode), [mode]);
   useEffect(() => {
@@ -66,7 +68,8 @@ export default function App() {
   const go = async (kind: "run" | "update") => {
     setBusy(kind); setErr("");
     try {
-      const next = kind === "run" ? await runPlan(pack) : await sendUpdate(msg);
+      saveToken(token.trim());
+      const next = kind === "run" ? await runPlan(token, pack) : await sendUpdate(token, msg);
       setSt(next);
       if (kind === "run") setScreen("plan");
       else { setMsg(""); setScreen(next.runs[next.runs.length - 1].outcome === "applied" ? "plan" : "rejected"); }
@@ -105,8 +108,10 @@ export default function App() {
             <section className="panel">
               <h2><FileText size={18} /> Message pack</h2>
               <textarea style={{ minHeight: "16rem" }} value={pack} onChange={(e) => setPack(e.target.value)} aria-label="Message pack" />
+              <label className="muted" htmlFor="gem-token">Gemini API token (stays in this browser, sent only to Google)</label>
+              <input id="gem-token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Paste your free key from aistudio.google.com/apikey" />
               <div className="row">
-                <button className="btn primary" disabled={!!busy || !pack.trim() || !organizer} onClick={() => go("run")}>
+                <button className="btn primary" disabled={!!busy || !pack.trim() || !token.trim() || !organizer} onClick={() => go("run")}>
                   {busy === "run" ? <Loader2 size={16} className="spin" /> : <Play size={16} />} Plan the event
                 </button>
               </div>
@@ -117,7 +122,7 @@ export default function App() {
           {screen === "trace" && (st ? (
             <>
               <div className="row" style={{ marginBottom: ".8rem" }}>
-                <button className="btn" onClick={() => downloadCsv().catch((e) => setErr(e.message))}><Download size={16} /> Trace table (CSV)</button>
+                <button className="btn" onClick={() => downloadCsv(st)}><Download size={16} /> Trace table (CSV)</button>
                 <button className="btn" onClick={() => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(st, null, 2)], { type: "application/json" })); a.download = "plan-and-trace.json"; a.click(); }}><Download size={16} /> Save plan and trace</button>
               </div>
               <TraceView st={st} />
@@ -128,8 +133,10 @@ export default function App() {
             <section className="panel">
               <h2><RefreshCw size={18} /> New message</h2>
               <textarea style={{ minHeight: "6rem" }} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Paste a message that arrived after the first run" aria-label="New message" />
+              <label className="muted" htmlFor="gem-token">Gemini API token (stays in this browser, sent only to Google)</label>
+              <input id="gem-token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Paste your free key from aistudio.google.com/apikey" />
               <div className="row">
-                <button className="btn primary" disabled={!!busy || !msg.trim() || !st || !organizer} onClick={() => go("update")}>
+                <button className="btn primary" disabled={!!busy || !msg.trim() || !token.trim() || !st || !organizer} onClick={() => go("update")}>
                   {busy === "update" ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Update the plan
                 </button>
               </div>

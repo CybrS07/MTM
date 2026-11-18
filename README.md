@@ -1,21 +1,17 @@
 # Mind to Machine planner
 
-React + Vite + TypeScript frontend · TypeScript (Express) API over HTTPS · Python reader calling Gemini · Supabase storage.
+React + Vite + TypeScript, running entirely in the browser · Gemini called directly with the user's own token · Supabase for login, receipts and the assistant.
 
 ## Setup
 1. `npm install`
-2. Supabase → SQL Editor → paste and run `sql/schema.sql`
-3. Python 3.9+ must be on PATH (no pip packages needed)
-4. `npm run dev` → open https://localhost:5173 (accept the local certificate warning once)
-
-## One command (terminal)
-- `npm run plan` reads `data/messages.txt` and prints the trace
-- `npm run update` reads `data/update.txt` and updates the plan
+2. (Optional login) Supabase → SQL Editor → paste and run `sql/schema.sql`, and set the `VITE_SUPABASE_*` values in `.env`
+3. `npm run dev` → open https://localhost:5173 (accept the local certificate warning once)
+4. In **Message input**, paste your free Gemini token (https://aistudio.google.com/apikey) and press **Plan the event**
 
 ## Where the model is used
-Only `ai/reader.py` calls a model (area "reading"). Venue, schedule, food, judging and budget are plain code in `api/src/plan.ts`; `api/src/checks.ts` validates the six checks. A message is rejected if the model says it is wrong or if applying it breaks any check.
+Only `src/planner/ai.ts` calls a model (area "reading"). Venue, schedule, food, judging and budget are plain code in `src/planner/plan.ts`; `src/planner/checks.ts` validates the six checks. A message is rejected if the model says it is wrong or if applying it breaks any check.
 
 ## Security
-- API is HTTPS only (TLS 1.2+, HSTS). Port 8080 only redirects to HTTPS.
-- Gemini and Supabase secret keys stay on the server. The browser never sees them.
-- `.env` is git-ignored.
+- There is no server. The plan is kept in this browser (localStorage).
+- The Gemini token is typed by the user, kept in this browser and sent only to `generativelanguage.googleapis.com` (allowed by the page's Content-Security-Policy).
+- `.env` is git-ignored; never put a secret key in a `VITE_` variable.

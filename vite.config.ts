@@ -25,9 +25,8 @@ const origin = (u?: string) => { try { return new URL(u ?? "").origin; } catch {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const connect = [origin(env.VITE_API_URL), origin(env.VITE_SUPABASE_URL)].filter(Boolean);
+  const connect = ["https://generativelanguage.googleapis.com", origin(env.VITE_SUPABASE_URL)].filter(Boolean);
   const images = [origin(env.VITE_SUPABASE_URL)].filter(Boolean);
-  const proxy = { "/api": { target: `https://localhost:${env.HTTPS_PORT || 8443}`, secure: false, changeOrigin: true } };
   // GitHub Pages cannot send headers, so the production policy ships as a meta tag.
   const cspMeta = {
     name: "csp-meta", apply: "build" as const,
@@ -36,7 +35,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: env.VITE_BASE || "/",
     plugins: [react(), basicSsl(), cspMeta],
-    server: { port: 5173, strictPort: true, proxy, headers: headers(true, connect, images) },
-    preview: { port: 5173, proxy, headers: headers(false, connect, images) },
+    server: { port: 5173, strictPort: true, headers: headers(true, connect, images) },
+    preview: { port: 5173, headers: headers(false, connect, images) },
   };
 });

@@ -1,6 +1,11 @@
 node_modules
 dist
 .env
+.env.*
+!.env.example
 certs/*.pem
 data/state.json
 __pycache__
+.venv
+supabase/.temp
+supabase/migrations

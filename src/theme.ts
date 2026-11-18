@@ -34,13 +34,15 @@ export const themes: Record<Mode, Record<string, string>> = {
 };
 
 const KEY = "m2m-theme";
+// localStorage can throw (private windows, blocked storage). A throw here would blank the page, so guard it.
+const stored = (): Mode | null => { try { const v = localStorage.getItem(KEY); return v === "dark" || v === "light" ? v : null; } catch { return null; } };
 export const initialMode = (): Mode =>
-  (localStorage.getItem(KEY) as Mode) || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  stored() ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
 export function applyTheme(mode: Mode) {
   const root = document.documentElement;
   for (const [k, v] of Object.entries(themes[mode])) root.style.setProperty(`--${k}`, v);
   root.dataset.theme = mode;
   root.style.colorScheme = mode;
-  localStorage.setItem(KEY, mode);
+  try { localStorage.setItem(KEY, mode); } catch { /* ignore */ }
 }

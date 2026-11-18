@@ -3,7 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import { Activity, Ban, Bot, CalendarClock, Download, FileText, LayoutDashboard, Loader2, LogOut, Moon, Play, ReceiptText, RefreshCw, ShieldAlert, Sun } from "lucide-react";
 import type { State } from "../shared/types";
 import { downloadCsv, getSample, getState, runPlan, sendUpdate } from "./api";
-import { supabase } from "./lib/supabase";
+import { SUPABASE_ON, supabase } from "./lib/supabase";
 import { applyTheme, initialMode, type Mode } from "./theme";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
@@ -15,21 +15,23 @@ import Assistant from "./components/Assistant";
 import "./layout.css";
 
 type Screen = "dashboard" | "input" | "plan" | "trace" | "rejected" | "update" | "receipts" | "assistant";
-const NAV: { id: Screen; label: string; icon: typeof Bot; organizer?: boolean }[] = [
+// needsLogin: these screens use Supabase directly, so they are hidden in no-login mode.
+const NAV: { id: Screen; label: string; icon: typeof Bot; organizer?: boolean; needsLogin?: boolean }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "input", label: "Message input", icon: FileText },
   { id: "plan", label: "Event plan", icon: CalendarClock },
   { id: "trace", label: "AI agent trace", icon: Activity },
   { id: "rejected", label: "Conflicts and rejected", icon: Ban },
   { id: "update", label: "Update plan", icon: RefreshCw },
-  { id: "receipts", label: "Receipts", icon: ReceiptText },
-  { id: "assistant", label: "AI assistant", icon: Bot, organizer: true },
+  { id: "receipts", label: "Receipts", icon: ReceiptText, needsLogin: true },
+  { id: "assistant", label: "AI assistant", icon: Bot, organizer: true, needsLogin: true },
 ];
 
 export default function App() {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [session, setSession] = useState<Session | null | undefined>(undefined);
-  const [organizer, setOrganizer] = useState(false);
+  const guest = !SUPABASE_ON; // no Supabase keys in .env: open straight to the plan, no login
+  const [organizer, setOrganizer] = useState(guest);
   const [st, setSt] = useState<State | null>(null);
   const [pack, setPack] = useState("");
   const [msg, setMsg] = useState("");
@@ -39,21 +41,27 @@ export default function App() {
 
   useEffect(() => applyTheme(mode), [mode]);
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    if (guest) return;
+    // catch: if Supabase cannot be reached, show the login form instead of "Loading…" forever
+    supabase.auth.getSession().then(({ data }) => setSession(data.session)).catch(() => setSession(null));
     const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => data.subscription.unsubscribe();
-  }, []);
+  }, [guest]);
 
   const uid = session?.user.id;
   useEffect(() => {
+    const load = () => {
+      getState().then(setSt).catch((e: Error) => setErr(e.message));
+      getSample().then((s) => setPack(s.text)).catch(() => {});
+    };
+    if (guest) { load(); return; }
     if (!uid) { setOrganizer(false); setSt(null); return; }
     supabase.from("profiles").select("role").eq("id", uid).maybeSingle().then(({ data }) => setOrganizer(data?.role === "organizer"));
-    getState().then(setSt).catch(() => {});
-    getSample().then((s) => setPack(s.text)).catch(() => {});
-  }, [uid]);
+    load();
+  }, [uid, guest]);
 
-  if (session === undefined) return <p className="empty">Loading…</p>;
-  if (!session) return <Login />;
+  if (!guest && session === undefined) return <p className="empty">Loading…</p>;
+  if (!guest && !session) return <Login />;
 
   const go = async (kind: "run" | "update") => {
     setBusy(kind); setErr("");
@@ -77,22 +85,22 @@ export default function App() {
           <div><h1>Mind to Machine planner</h1><small>150 students · 50 teams · Islamabad</small></div>
         </div>
         <div className="who">
-          <span>{session.user.email} · {organizer ? "organizer" : "student"}</span>
+          <span>{guest ? "No-login mode" : `${session?.user.email} · ${organizer ? "organizer" : "student"}`}</span>
           <button className="btn icon-btn" aria-label="Switch theme" onClick={() => setMode(mode === "dark" ? "light" : "dark")}>{mode === "dark" ? <Sun size={18} /> : <Moon size={18} />}</button>
-          <button className="btn icon-btn" aria-label="Sign out" onClick={() => supabase.auth.signOut()}><LogOut size={18} /></button>
+          {!guest && <button className="btn icon-btn" aria-label="Sign out" onClick={() => supabase.auth.signOut()}><LogOut size={18} /></button>}
         </div>
       </header>
 
       <div className="shell">
         <nav className="nav" aria-label="Screens">
-          {NAV.filter((n) => !n.organizer || organizer).map(({ id, label, icon: Icon }) => (
+          {NAV.filter((n) => (!n.organizer || organizer) && (!n.needsLogin || !guest)).map(({ id, label, icon: Icon }) => (
             <button key={id} aria-current={screen === id ? "page" : undefined} onClick={() => setScreen(id)}><Icon size={18} /> {label}</button>
           ))}
         </nav>
 
         <main>
           {err && <div className="error" role="alert"><ShieldAlert size={18} /> {err}</div>}
-          {screen === "dashboard" && <Dashboard st={st} organizer={organizer} />}
+          {screen === "dashboard" && <Dashboard st={st} />}
           {screen === "input" && (
             <section className="panel">
               <h2><FileText size={18} /> Message pack</h2>
@@ -128,8 +136,8 @@ export default function App() {
               {lock}
             </section>
           )}
-          {screen === "receipts" && <Receipts userId={session.user.id} organizer={organizer} />}
-          {screen === "assistant" && organizer && <Assistant />}
+          {screen === "receipts" && session && <Receipts userId={session.user.id} organizer={organizer} />}
+          {screen === "assistant" && organizer && !guest && <Assistant />}
         </main>
       </div>
     </>

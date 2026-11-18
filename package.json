@@ -4,15 +4,17 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-  "dev": "concurrently -k -n api,web \"npm:api\" \"npm:web\"",
-  "api": "tsx watch api/src/index.ts",
-  "web": "vite",
-  "plan": "tsx api/src/cli.ts run",
-  "update": "tsx api/src/cli.ts update",
-  "typecheck": "tsc --noEmit && tsc --noEmit -p api",
-  "test": "tsx --test api/test/core.test.ts",
-  "build": "vite build"
-},
+    "dev": "concurrently -k -n api,web \"npm:api\" \"npm:web\"",
+    "api": "tsx watch api/src/index.ts",
+    "web": "vite",
+    "plan": "tsx api/src/cli.ts run",
+    "update": "tsx api/src/cli.ts update",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p api",
+    "test": "tsx --test api/test/core.test.ts",
+    "build": "vite build",
+    "doctor": "node scripts/doctor.mjs",
+    "setup": "npm install && node scripts/doctor.mjs"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.46.1",
     "cors": "^2.8.5",
@@ -37,5 +39,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

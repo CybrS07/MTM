@@ -9,7 +9,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <p style="font-family:system-ui,sans-serif;padding:2rem;text-align:center;color:#555">
+        Loading the planner…<br />
+        If this message stays, the app did not start. Run <code>npm install</code> then <code>npm run dev</code> and open
+        <code>https://localhost:5173</code> (accept the certificate warning once). Run <code>npm run doctor</code> to check your setup.
+      </p>
+    </div>
+    <noscript>This app needs JavaScript turned on.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

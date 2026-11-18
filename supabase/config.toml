@@ -1,0 +1,2 @@
+# Minimal config so the Supabase CLI (link, db push, functions deploy) works locally and in CI.
+project_id = "MTM"

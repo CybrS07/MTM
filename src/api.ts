@@ -1,6 +1,6 @@
 import type { State } from "../shared/types";
 import { SUPABASE_ON, supabase } from "./lib/supabase";
-
+const API_URL = import.meta.env.VITE_API_URL;
 /** Empty in dev (the Vite proxy handles /api). On GitHub Pages, set the VITE_API_URL variable to your API's https address. */
 export const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? "").replace(/\/$/, "");
 

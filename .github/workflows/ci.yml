@@ -1,0 +1,97 @@
+name: Test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: npm ci
+      - name: Typecheck (frontend and API)
+        run: npm run typecheck
+      - name: Unit tests (no network, no secrets)
+        run: npm test
+      - name: Python env (uv, locked)
+        run: uv sync --locked
+      - name: Python lint and syntax check
+        run: |
+          uv run ruff check ai
+          uv run python -m py_compile ai/reader.py
+      - name: Dependency audit (production only)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+      - name: Build check
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+
+  build:
+    name: Build site
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          # Public values only. Never put a secret key in a VITE_ variable: Vite copies it into the browser bundle.
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_BASE: /${{ github.event.repository.name }}/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy-site:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  deploy-api:
+    name: Trigger API deploy (optional)
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      HOOK: ${{ secrets.API_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Call the host's deploy hook
+        if: env.HOOK != ''
+        run: curl -fsS -X POST "$HOOK"
+      - name: No hook set
+        if: env.HOOK == ''
+        run: echo "API_DEPLOY_HOOK_URL not set. Skipping API deploy."

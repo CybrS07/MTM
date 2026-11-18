@@ -13,7 +13,9 @@ import { HttpError, bodyText, csvSafe } from "./sanitize.js";
 
 const HTTPS_PORT = Number(process.env.HTTPS_PORT || 8443);
 const HTTP_PORT = Number(process.env.HTTP_PORT || 8080);
+const BEHIND_PROXY = process.env.BEHIND_PROXY === "true"; // host terminates TLS and forwards plain HTTP to PORT
 const app = express();
+if (BEHIND_PROXY) app.set("trust proxy", 1);
 
 app.disable("x-powered-by");
 app.use(helmet({
@@ -25,6 +27,7 @@ app.use(helmet({
 app.use((_q, r, next) => { r.setHeader("Cache-Control", "no-store"); r.setHeader("X-Content-Type-Options", "nosniff"); next(); });
 app.use(cors({ origin: process.env.WEB_ORIGIN || "https://localhost:5173", methods: ["GET", "POST"] }));
 app.use(express.json({ limit: "50kb", type: "application/json" }));        // JSON only, small bodies
+app.get("/api/health", (_q, r) => r.json({ ok: true }));                    // before the HTTPS check so host health checks pass
 app.use((req, res, next) => (req.secure ? next() : res.status(426).json({ error: "HTTPS required" })));
 
 // Rate limits: general traffic, and a tight limit on the routes that spend model tokens.
@@ -45,7 +48,6 @@ const job = (fn: (req: express.Request, res: express.Response) => Promise<void>)
   } finally { busy = false; }
 };
 
-app.get("/api/health", (_q, r) => r.json({ ok: true }));
 app.get("/api/state", (_q, r) => r.json(loadState()));
 app.get("/api/sample", (_q, r) => r.json({ text: readText(PATHS.pack) }));
 app.get("/api/export", (_q, r) => { r.setHeader("Content-Disposition", "attachment; filename=plan-and-trace.json"); r.json(loadState()); });
@@ -72,8 +74,13 @@ app.use((_q, r) => r.status(404).json({ error: "Not found" }));
 app.use((err: any, _q: express.Request, r: express.Response, _n: express.NextFunction) =>
   r.status(err?.status === 413 ? 413 : 400).json({ error: err?.status === 413 ? "Request too large." : "Bad request." }));
 
-https.createServer({ ...loadTls(), minVersion: "TLSv1.2" }, app).listen(HTTPS_PORT, () => console.log(`API  https://localhost:${HTTPS_PORT}`));
-http.createServer((req, res) => {
-  const host = (req.headers.host || "localhost").replace(/[^a-zA-Z0-9.\-]/g, "").replace(/:\d+$/, "");
-  res.writeHead(301, { Location: `https://${host}:${HTTPS_PORT}${encodeURI(req.url || "/")}` }).end();
-}).listen(HTTP_PORT, () => console.log(`HTTP http://localhost:${HTTP_PORT} redirects to HTTPS`));
+if (BEHIND_PROXY) {
+  const port = Number(process.env.PORT || 10000);
+  http.createServer(app).listen(port, () => console.log(`API behind HTTPS proxy on port ${port}`));
+} else {
+  https.createServer({ ...loadTls(), minVersion: "TLSv1.2" }, app).listen(HTTPS_PORT, () => console.log(`API  https://localhost:${HTTPS_PORT}`));
+  http.createServer((req, res) => {
+    const host = (req.headers.host || "localhost").replace(/[^a-zA-Z0-9.\-]/g, "").replace(/:\d+$/, "");
+    res.writeHead(301, { Location: `https://${host}:${HTTPS_PORT}${encodeURI(req.url || "/")}` }).end();
+  }).listen(HTTP_PORT, () => console.log(`HTTP http://localhost:${HTTP_PORT} redirects to HTTPS`));
+}

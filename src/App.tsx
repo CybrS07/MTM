@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Activity, Ban, Bot, Download, FileText, Loader2, Moon, Play, Send, ShieldAlert, Sun } from "lucide-react";
 import type { State } from "../shared/types";
-import { getSample, getState, runPlan, sendUpdate } from "./api";
+import { API_BASE, getSample, getState, runPlan, sendUpdate } from "./api";
 import { applyTheme, initialMode, type Mode } from "./theme";
 import PlanView from "./components/PlanView";
 import TraceView from "./components/TraceView";
@@ -89,7 +89,7 @@ export default function App() {
                 <button className="tab" role="tab" aria-selected={tab === "trace"} onClick={() => setTab("trace")}><Activity size={16} /> Trace</button>
                 <button className="tab" role="tab" aria-selected={tab === "rejected"} onClick={() => setTab("rejected")}><Ban size={16} /> Rejected <span className="count">{st.rejected.length}</span></button>
                 <button className="btn" style={{ marginLeft: "auto" }} onClick={download}><Download size={16} /> Save plan and trace</button>
-                <a className="btn" href="/api/export.csv" download><Download size={16} /> Trace table (CSV)</a>
+                <a className="btn" href={`${API_BASE}/api/export.csv`} download><Download size={16} /> Trace table (CSV)</a>
               </div>
               {tab === "plan" && <PlanView st={st} />}
               {tab === "trace" && <TraceView st={st} />}

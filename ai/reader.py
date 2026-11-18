@@ -4,8 +4,31 @@ mode "read":   raw message pack  -> structured facts
 mode "update": current facts + one new message -> {kind, reason, patch}
 All arithmetic lives in the TypeScript planner, not here.
 """
-import json, os, re, sys, time, urllib.error, urllib.request
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
 
+
+
+def load_dotenv():
+    """Read ../.env when this file is run by hand. Variables already set by the server win."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
+    except OSError:
+        pass
+
+
+load_dotenv()
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 KEY = os.environ.get("GEMINI_API_KEY", "")
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
@@ -70,7 +93,7 @@ def call_model(system: str, user: str):
 
 def main():
     if not KEY:
-        raise RuntimeError("GEMINI_API_KEY is missing in .env")
+        raise RuntimeError("GEMINI_API_KEY is missing. Add it to .env or the host settings")
     p = json.loads(sys.stdin.read())
     if p["mode"] == "read":
         system, user = SYS_READ, p["text"]
